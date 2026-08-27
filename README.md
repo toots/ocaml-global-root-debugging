@@ -33,7 +33,7 @@ reads back. Moving a generational root between the young and old lists leaves it
 alone: the owner has not changed. Removing forgets it.
 
 **Each skiplist cell carries the key it was inserted with.** `struct skipcell`
-gains a `check` field holding `key ^ 0x5ADD1E5F`, and `caml_iterate_global_roots`
+gains a `check` field holding `key ^ SKIPCELL_STAMP`, and `caml_iterate_global_roots`
 tests it before dereferencing the key. A cell whose key has been overwritten is
 refused and reported with its owner, in place of a fault inside `caml_darken`.
 The stamping is done by the skiplist, so `codefrag`, `debugger` and `platform`
@@ -57,12 +57,16 @@ It reads the runtime's own structures:
   are the three skiplists the runtime files roots in. Each is walked along
   `forward[0]`, which chains every cell.
 - A cell is `{key, data, check}`. `key` is the root's address and `check` is
-  `key ^ 0x5ADD1E5F`, written when the cell was inserted. `data` marks a cell
-  retired during an iteration, and is not consulted here.
-- A cell is damaged when `check` no longer agrees with `key`. Since the
-  obfuscation is its own inverse, the address the cell was inserted under
-  comes back as `check ^ 0x5ADD1E5F`, which is what the rest of the report is
-  built from.
+  `key ^ SKIPCELL_STAMP`, written when the cell was inserted. The stamp is a
+  non-zero constant the runtime exports as `caml_skipcell_stamp`, read from the
+  image so that no copy of it is kept here. `data` marks a cell retired during
+  an iteration, and is not consulted here.
+- A cell is damaged when `check` no longer agrees with `key`. Storing the key
+  outright would let a write that fills a region with one value pass, zeroing
+  included; xoring means agreement needs `X == X ^ stamp`, which no value
+  satisfies. Being its own inverse, it also gives the key back: the address the
+  cell was inserted under is `check ^ stamp`, and the rest of the report is
+  built from it.
 - `roots_origin` is a fourth skiplist, from a root's address to the return
   address of whoever registered it. It is looked up under the recovered
   address, the damaged one being filed nowhere.
