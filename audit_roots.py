@@ -8,7 +8,15 @@ mapping a root to its registrant are both kept only there.
 
 import gdb
 
-MAGIC = 0x5ADD1E5F
+def stamp():
+    """The runtime exports what it stamps cells with, so it is read from the
+    image rather than kept as a second copy here."""
+    try:
+        return int(gdb.parse_and_eval("caml_skipcell_stamp"))
+    except gdb.error:
+        raise gdb.GdbError(
+            "no caml_skipcell_stamp: this needs a runtime built with the "
+            "cell stamp, reached through -runtime-variant d")
 
 
 def cells(name):
@@ -80,6 +88,7 @@ class AuditRoots(gdb.Command):
         super().__init__("audit-roots", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
+        st = stamp()
         bad = 0
         total = 0
         for name in ("caml_global_roots",
@@ -93,10 +102,10 @@ class AuditRoots(gdb.Command):
                     bad += 1
                     continue
                 total += 1
-                if check == (key ^ MAGIC):
+                if check == (key ^ st):
                     continue
                 bad += 1
-                was = check ^ MAGIC
+                was = check ^ st
                 who = name_of(was)
                 where = f"{was:#x}" + (f" ({who})" if who else "")
                 print(f"{name}: cell filed under {key:#x}")
