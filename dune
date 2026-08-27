@@ -1,8 +1,8 @@
 ; The stubs reach into the runtime's own root list, so they must agree with it
 ; about DEBUG: the field the check lives in is only there in a debug build.
 (executables
- (names provenance audit crash)
- (modules provenance audit crash)
+ (names provenance audit crash stale)
+ (modules provenance audit crash stale)
  (foreign_stubs
   (language c)
   (names stubs)
@@ -16,6 +16,7 @@
   audit_roots.py
   provenance.exe
   audit.exe
-  crash.exe)
+  crash.exe
+  stale.exe)
  (action
   (run sh %{dep:run_tests.sh})))

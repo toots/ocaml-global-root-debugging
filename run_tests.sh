@@ -10,6 +10,15 @@ cmd()  { printf '   $ %s\n' "$*"; }
 out()  { printf '%s\n' "$1" | sed 's/^/       /'; }
 step() { printf '     %s\n' "$*"; }
 
+died() {
+  case $1 in
+    139) printf '[no message: killed by SIGSEGV, the fault being inside the collector]\n' ;;
+    134) printf '[aborted]\n' ;;
+    0)   printf '[exited normally]\n' ;;
+    *)   printf '[exited %s]\n' "$1" ;;
+  esac
+}
+
 expect() {
   want_ok=$1; got=$2; rc=$3; shift 3
   if [ "$want_ok" = yes ] && [ "$rc" -ne 0 ]; then
@@ -50,6 +59,7 @@ say ""
 cmd "./audit.exe"
 o=$(./audit.exe 2>&1); rc=$?
 out "$o"
+out "$(died $rc)"
 expect no "$o" "$rc" "opened the decoder: roots intact" \
   "read the metadata: roots intact" "skiplist cell at"
 
@@ -65,6 +75,7 @@ say ""
 cmd "./crash.exe"
 o=$(./crash.exe 2>&1); rc=$?
 out "$o"
+out "$(died $rc)"
 expect no "$o" "$rc" "global root at" "registered by"
 
 say ""
@@ -92,10 +103,44 @@ else
   cmd "gdb -q -batch -x audit_roots.py --core=core ./crash.exe"
   o=$(gdb -q -batch -iex "set debuginfod enabled off" \
           -x audit_roots.py --core="$found" ./crash.exe 2>&1 \
-      | grep -vE "libthread|^\[|warning:|Core was|Program term|^#")
+      | grep -vE "libthread|^\[|warning:|Core was|Program term|^#" \
+      | awk 'NF||seen{seen=1;print}')
   out "$o"
   expect yes "$o" 0 "registered by  *metadata_open"
 fi
 
+say ""
+say "5. A root holding something that is no longer a value"
+say ""
+step "every cell is intact here, so the checks above all pass"
+step "the collector follows the root and goes down with it, somewhere that"
+step "  names only the collector"
+step "the root under the scan is left in a thread-local, so the core still"
+step "  says which one it was and what registered it"
+say ""
+cmd "./stale.exe"
+o=$(./stale.exe 2>&1); rc=$?
+out "$o"
+out "$(died $rc)"
+expect no "$o" "$rc" "the root holds rubbish"
+
+core2=$(mktemp -d)/core
+( cd "$(dirname "$core2")" && ulimit -c unlimited 2>/dev/null
+  "$OLDPWD"/stale.exe >/dev/null 2>&1 ) 2>/dev/null
+f2=$(find "$(dirname "$core2")" -name 'core*' -print -quit 2>/dev/null)
+if [ -z "$f2" ] && command -v coredumpctl >/dev/null 2>&1; then
+  coredumpctl dump -o "$core2" >/dev/null 2>&1 && f2=$core2
+fi
+if [ -z "$f2" ]; then
+  say "   skipped: no core available on this system"
+else
+  cmd "gdb -q -batch -x audit_roots.py --core=core ./stale.exe"
+  o=$(gdb -q -batch -iex "set debuginfod enabled off" \
+          -x audit_roots.py --core="$f2" ./stale.exe 2>&1 \
+      | grep -vE "libthread|^\[|warning:|Core was|Program term|^#" \
+      | awk 'NF||seen{seen=1;print}')
+  out "$o"
+  expect yes "$o" 0 "0 damaged" "registered by  *metadata_open"
+fi
 say ""
 exit $status

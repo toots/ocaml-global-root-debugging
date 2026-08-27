@@ -83,6 +83,14 @@ def name_of(addr):
     return line.split(" in section")[0].strip()
 
 
+def readable(ptr):
+    try:
+        ptr.dereference()
+        return True
+    except gdb.MemoryError:
+        return False
+
+
 class AuditRoots(gdb.Command):
     def __init__(self):
         super().__init__("audit-roots", gdb.COMMAND_USER)
@@ -111,8 +119,27 @@ class AuditRoots(gdb.Command):
                 print(f"{name}: cell filed under {key:#x}")
                 print(f"  inserted under      {where}")
                 print(f"  registered by       {describe(origin_of(was))}")
-        print(f"\n{total} roots checked, {bad} damaged")
+                print()
 
+        # A root holding something that is no longer a value takes the
+        # collector down when it is followed, leaving every cell intact.
+        scanned = None
+        try:
+            scanned = gdb.parse_and_eval("caml_root_being_scanned")
+        except gdb.error:
+            pass
+        if scanned is not None and int(scanned) != 0:
+            addr = int(scanned)
+            who = name_of(addr)
+            print(f"the collector was following the root at {addr:#x}"
+                  + (f" ({who})" if who else ""))
+            held = (f"{int(scanned.dereference()):#x}"
+                    if readable(scanned) else "unreadable")
+            print(f"  it holds             {held}")
+            print(f"  registered by        {describe(origin_of(addr))}")
+            print()
+
+        print(f"{total} roots checked, {bad} damaged")
 
 AuditRoots()
 gdb.execute("audit-roots")

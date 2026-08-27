@@ -119,3 +119,13 @@ CAMLprim value tgr_damage_a_root(value unit)
     })
   return Val_unit;
 }
+
+/* A root whose storage a binding has freed reads whatever now occupies it.
+   Standing in for that, since what a freed block holds is the allocator's
+   business: something that is not a value, and not a mapped address either. */
+CAMLprim value tgr_root_holds_rubbish(value unit)
+{
+  (void) unit;
+  metadata_charset = (value) 0x10;
+  return Val_unit;
+}

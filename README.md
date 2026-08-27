@@ -5,15 +5,16 @@ walking the roots some time later. All it can say by then is where it was
 standing, which is `caml_darken`. Who registered the root is in neither the
 backtrace nor the core.
 
-Three additions to the debug runtime keep enough to name it: each root
-remembers the code that registered it, each skiplist cell carries the key it
-was inserted with, and `Gc.check_roots ()` walks the lists on demand.
+Four additions to the debug runtime keep enough to name it: each root remembers
+the code that registered it, each skiplist cell carries the key it was inserted
+with, `Gc.check_roots ()` walks the lists on demand, and the root under the scan
+is left where a debugger can find it.
 
     dune build && dune runtest
 
-Four cases, live to post-mortem: which binding owns a root, which step damaged
-one, what the collector says when nothing checks, and the same finding from a
-core alone.
+Five cases, live to post-mortem: which binding owns a root, which step damaged
+one, what the collector says when nothing checks, the same finding from a core
+alone, and a root whose cell is perfectly intact but whose value is not.
 
     caml_global_roots: cell filed under 0x1000000552890
       inserted under      0x552890 (metadata_charset)
@@ -22,7 +23,7 @@ core alone.
 `runtest` prints each command and what it does. `stubs.c` plays the part of the
 binding.
 
-## The three changes to the runtime
+## The four changes to the runtime
 
 All under `DEBUG`, so a release build carries none of them and pays nothing.
 
@@ -42,6 +43,12 @@ carry it too and can be checked the same way, though nothing checks them.
 **`Gc.check_roots ()`** walks the three lists on demand and fails the same way,
 for finding which step of a program damages a root rather than waiting for the
 collection that trips over it.
+
+**The root being scanned is left in a thread-local.** What a root holds is the
+caller's to set, so nothing can tell a stray value from an intended one, and a
+root holding something that is no longer a value takes the collector down when
+it is followed. `caml_root_being_scanned` says which root that was, which is
+enough to reach its registrant.
 
 ## audit_roots.py
 
@@ -81,11 +88,17 @@ pointers were hit reports a truncated list rather than throwing.
 
 ## What it needs
 
-A compiler carrying those three, and `-runtime-variant d` in `dune`. Without
+A compiler carrying those four, and `-runtime-variant d` in `dune`. Without
 them `crash.exe` faults inside the collector and the core says nothing, which
 is the situation these exist to get out of.
 
 ## What it does not catch
+
+Nothing here detects a root holding the wrong value: what a root holds is the
+caller's to set, so there is no telling a stray write from an intended one. A
+root whose storage a binding freed without unregistering keeps a cell that
+passes every check, and the collector still follows whatever now occupies it.
+The last of the four makes that crash attributable, not preventable.
 
 The stamp covers a cell's key, not the pointers that chain it: a write landing
 on those leaves the list unwalkable, and the script says so rather than naming
