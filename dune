@@ -1,0 +1,21 @@
+; The stubs reach into the runtime's own root list, so they must agree with it
+; about DEBUG: the field the check lives in is only there in a debug build.
+(executables
+ (names provenance audit crash)
+ (modules provenance audit crash)
+ (foreign_stubs
+  (language c)
+  (names stubs)
+  (flags -DDEBUG -D_GNU_SOURCE))
+ (link_flags -runtime-variant d -cclib -ldl))
+
+(rule
+ (alias runtest)
+ (deps
+  run_tests.sh
+  audit_roots.py
+  provenance.exe
+  audit.exe
+  crash.exe)
+ (action
+  (run sh %{dep:run_tests.sh})))
